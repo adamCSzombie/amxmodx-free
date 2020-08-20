@@ -1,0 +1,123 @@
+#define SLOVAK 	1	
+#define CZECH 	2
+#define	ENGLISH 3
+
+new g_player_lang[ 33 ];
+
+new const lang[ ][ ][ ] = {
+	{ SLOVAK, 0,	"\yPrihlasovacie Menu:\d (www.playaspro.net)" },
+	{ SLOVAK, 1,	"\yMeno:\w" },
+	{ SLOVAK, 2,	"\yHeslo:\w" },
+	{ SLOVAK, 3,	"\rLanguage: \wSlovak" },
+	{ SLOVAK, 4,	">> PRIHLASIT SA <<" },
+	{ SLOVAK, 5,	">> ZAREGISTROVAT SA <<" },
+	{ SLOVAK, 6, 	"!g[ZP]!y Databaza nebola uspesne pripojena!" },
+	{ SLOVAK, 7, 	"!g[ZP]!y Prihlasujem na vas ucet...." },
+	
+	{ CZECH, 0,	"\yPrihlasovaci Menu:\d (www.playaspro.net)" },
+	{ CZECH, 1,	"\yMeno:\w" },
+	{ CZECH, 2,	"\yHeslo:\w" },
+	{ CZECH, 3,	"\rLanguage: \wCzech" },
+	{ CZECH, 4,	">> PRIHLASIT SE <<" },
+	{ CZECH, 5,	">> ZAREGISTROVAT SE <<" },
+	{ CZECH, 6,	"!g[ZP]!y Databaze nebyla uspesne prepojena!" },
+	{ CZECH, 7,	"!g[ZP]!y Prihlasuji na tvuj ucet...." },
+	
+	{ ENGLISH, 0,	"\yLogin Menu: \d (www.playaspro.net)" },
+	{ ENGLISH, 1,	"\yName:\w" },
+	{ ENGLISH, 2,	"\yPassword:\w" },
+	{ ENGLISH, 3,	"\rLanguage: \wEnglish" },
+	{ ENGLISH, 4,	">> LOGIN IN <<" },
+	{ ENGLISH, 5,	">> MAKE NEW ACCOUNT <<" },
+	{ ENGLISH, 6, 	"!g[ZP]!y Database has not been connected!" },
+	{ ENGLISH, 7, 	"!g[ZP]!y Logining into your account...." }
+};
+
+public register_menu( id ) {
+	if( ServerLoaded == 0 ) {
+		ChatColor( id, "%s", lang[ g_player_lang[ id ] ][ 6 ] );
+		return PLUGIN_HANDLED;	
+	}
+	new Text[ 555 char ];
+	new hm = menu_create( lang[ g_player_lang[ id ] ][ 0 ], "register_menu_handle" );
+	
+	if( strlen( User[ id ] ) > 0 ) {
+		formatex( Text, charsmax( Text ), "%s%s", lang[ g_player_lang[ id ] ][ 1 ], User[ id ] );
+		menu_additem( hm, Text, "1" );
+		formatex( Text, charsmax( Text )? "%s%s^n", lang[ g_player_lang[ id ] ][ 2 ], Password[ id ] );
+		menu_additem( hm, Text, "2" );
+	} else {
+		formatex( Text, charsmax( Text ), "%s%s", lang[ g_player_lang[ id ] ][ 1 ], User[ id ] );
+		menu_additem( hm, Text, "1" );
+	}
+	if( strlen( User[ id ] ) > 0 && strlen( Password[ id ] ) > 0 && UserLoad[ id ] == 0 && inProgress[ id ] == 0 ) {
+		if( Found[ id ] == 1 ) {
+			formatex( Text, charsmax( Text ), "%s^n", lang[ g_player_lang[ id ] ][ 4 ] );
+			menu_additem( hm, Text, "3" );
+		} else {
+			formatex( Text, charsmax( Text ), "%s^n", lang[ g_player_lang[ id ] ][ 5 ] );
+			menu_additem( hm, Text, "4" );
+		}
+	}
+	formatex( Text, charsmax( Text ), "%s", lang[ g_player_lang[ id ] ][ 3 ] );
+	menu_additem( hm, Text, "5" );
+	menu_display( id, hm );
+	return PLUGIN_HANDLED;
+}
+
+public register_menu_handle( id, menu, item ) {
+	if( item == MENU_EXIT ) {
+		menu_destroy( menu );
+		return PLUGIN_HANDLED;
+	}
+	new data[ 14 ], line[ 32 ], access, callback;
+	menu_item_getinfo( menu, item, access, data, charsmax( Data ), line, charsmax( line ), callback );
+	new buttom = str_to_num( Data );
+	
+	switch( buttom ) {
+		case 1: {
+			client_cmd( id, "messagemode MOJE_MENO" );
+			register_menu( id );
+		}
+		case 2: {
+			client_cmd( id, "messagemode MOJE_HESLO" );
+			register_menu( id );
+		}
+		case 3: {
+			if( inProgress[ id ] == 0 ) {
+				inProgress[ id ] = 1;
+				ChatColor( id, "%s", lang[ g_player_lang[ id ] ][ 7 ] );
+				RegisterMod[ id ] = 1;
+				SQL_Check( id );
+				register_menu( id );
+			} else {
+				register_menu( id );
+			}
+		}
+				
+		
+		case 4 : {
+			if(inProgress[id] == 0)
+			{
+				inProgress[id] = 1;
+				ChatColor(id, "!g%s!y %L", prefix, id, "REGISTERPENDING");
+				RegisterMod[id] = 2;
+				SQL_Check(id);
+				RegMenu(id);
+			}
+			else
+			{
+				RegMenu(id);
+			}
+		}
+		
+		case 5: {
+			ChatColor( id, "!g[ZP]!y Other languages comming soon!" );
+			RegMenu(id)
+		}
+	}
+}
+	
+/* AMXX-Studio Notes - DO NOT MODIFY BELOW HERE
+*{\\ rtf1\\ ansi\\ deff0{\\ fonttbl{\\ f0\\ fnil Tahoma;}}\n\\ viewkind4\\ uc1\\ pard\\ lang1051\\ f0\\ fs16 \n\\ par }
+*/

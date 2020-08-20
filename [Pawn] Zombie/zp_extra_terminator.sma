@@ -1,0 +1,513 @@
+/* Plugin vytvoreni pomocov AMXX-Studio */
+
+#include < amxmodx >
+#include < amxmisc >
+#include < engine >
+#include < fun >
+#include < fakemeta >
+#include < hamsandwich >
+#include < xs >
+#include < zombieplague >
+#include < fakemeta_util >
+#include < cstrike >
+#include < csx >
+
+#define is_user_valid(%1) (1 <= %1 <= g_maxplayers)
+
+#define TASK_AURA 0
+
+#define PLUGIN "[ZP-Extra] Terminator"
+#define VERSION "v1.5"
+#define AUTHOR "adamCSzombie"
+
+#define EXTRA_ITEM 	"Terminator"
+#define ITEM_COST 	200
+
+#define WEAPON_TERM	"weapon_m4a1"
+#define PISTOL_TERM	"weapon_deagle"
+
+#define OFFSET_CLIPAMMO	51
+#define OFFSET_LINUX_WEAPONS 4
+#define fm_cs_set_weapon_ammo(%1,%2)	set_pdata_int(%1, OFFSET_CLIPAMMO, %2, OFFSET_LINUX_WEAPONS)
+#define NO_RECOIL_WEAPONS_BITSUM  ( 1 << CSW_KNIFE | 1 << CSW_HEGRENADE | 1 << CSW_FLASHBANG | 1 << CSW_SMOKEGRENADE | 1 << CSW_C4 )
+
+#define g_terminator_weapon 373
+
+new g_msgSync;
+
+const WPN_BS = ((1<<CSW_HEGRENADE)|(1<<CSW_SMOKEGRENADE)|(1<<CSW_FLASHBANG)|(1<<CSW_KNIFE)|(1<<CSW_C4))
+new const g_MaxClips[ ] = { 0, 13, 0, 10, 0, 7, 0, 30, 30, 0, 15, 20, 25, 30, 35,
+25, 12, 20, 10, 30, 100, 8, 30, 30, 20, 0, 7, 30, 30, 0, 50 }
+
+new limit_term;
+new limit_skoky[ 33 ];
+
+new moze_task[ 33 ];
+
+new g_maxplayers;
+new g_terminator;
+new MaTerminatora[ 33 ];
+new cvar_terminator_on, cvar_terminator_hp, cvar_terminator_ap;
+new cvar_terminator_norecoil, cvar_jumps_extras;
+new cvar_terminator_glow_on, cvar_terminator_aura_on, cvar_terminator_aura_size;
+new cvar_terminator_glow_colors, cvar_terminator_aura_colors;
+new saltos_extras[ 33 ] = 0;
+new bool:g_un_clip[ 33 ];
+new bool:g_norecoil[ 33 ];
+new bool:invis[ 33 ];
+new bool:glow[ 33 ];
+new bool:jumps[ 33 ];
+new bool:tres_saltos[ 33 ] = false;
+
+public plugin_natives( )
+{
+	register_native( "is_user_terminator","native_is_user_terminator",1 )
+}
+
+public plugin_init( )
+{
+	register_plugin( PLUGIN, VERSION, AUTHOR );
+	
+	g_terminator = zp_register_extra_item( EXTRA_ITEM, ITEM_COST, ZP_TEAM_HUMAN );
+
+	register_dictionary( "zp_soldier_uqz.txt" );
+	
+	register_event( "HLTV", "event_round_start", "a", "1=0", "2=0" );
+	register_event( "CurWeapon", "Event_CurWeapon", "be", "1=1" );
+
+	register_forward( FM_PlayerPreThink, "fm_PlayerPreThink" );
+	
+	new weapon_name[ 24 ];
+	
+	for( new i = 1; i <= 30; i++ )
+	{
+		if ( !( NO_RECOIL_WEAPONS_BITSUM & 1 << i ) && get_weaponname( i, weapon_name, 23 ) )
+		{
+			RegisterHam( Ham_Weapon_PrimaryAttack, weapon_name, "fw_primary_attack" );
+			RegisterHam( Ham_Weapon_PrimaryAttack, weapon_name, "fw_primary_attack_post", 1 );
+		}
+	}
+
+	cvar_terminator_on = register_cvar( "zp_terminator_enable", "1" ); 		// 1 -> Zapnuty Extra Item / 0 -> Vypnuty Extra Item
+	cvar_terminator_hp = register_cvar( "zp_terminator_health", "555" );		// Zivot Terminatora
+	cvar_terminator_ap = register_cvar( "zp_terminator_armor", "555" );		// Armor Terminatora
+	cvar_terminator_norecoil = register_cvar( "zp_terminator_norecoil_new", "0" );	// 1 -> Zapnuty NoRecoil / 0 -> Vypnuty NoRecoil
+	cvar_jumps_extras = register_cvar( "zp_terminator_jumps_extras", "3" );		// 3 Skoky Navyse -- 3 + 1(zaklandy) = 4 Skoky
+	cvar_terminator_glow_on = register_cvar("zp_terminator_glow_enable", "1")	// 1 -> Zapnuty Glow / 0 -> Vypnuty Glow
+	cvar_terminator_aura_on = register_cvar("zp_terminator_aura_enable", "0")	// 1 -> Zapnuta Aura / 0 -> Vypnuta Aura
+	cvar_terminator_aura_size = register_cvar("zp_terminator_aura_size", "0")	// Velkost dosahu aury
+	cvar_terminator_glow_colors = register_cvar("zp_terminator_glow_rgb", "1") 	// Farby Glow RGB (red,green,blue)
+	cvar_terminator_aura_colors = register_cvar("zp_terminator_aura_rgb", "0") 	// Farby Aury RGB (red,green,blue)
+
+	g_maxplayers = get_maxplayers( );
+	g_msgSync = CreateHudSyncObj( );
+}
+
+public native_is_user_terminator( id )
+{
+	if ( !is_user_valid( id ) )
+	{
+		log_error( AMX_ERR_NATIVE, "[ZP] Invalid Player (%d)", id );
+		return -1;
+	}
+	
+	return MaTerminatora[ id ];
+}
+
+public zp_extra_item_selected( id, itemid )
+{
+	if( get_pcvar_num( cvar_terminator_on ) )
+	{
+		if( itemid == g_terminator )
+		{
+			if( limit_term != 4 )
+			{
+				if( !zp_has_round_started( ) )
+				{
+					client_print( id, print_chat, "Pockaj kym zacne kolo!" );
+					zp_set_user_ammo_packs( id, zp_get_user_ammo_packs( id ) + ITEM_COST );
+					return;
+				}
+				if( is_user_hannibal( id ) )
+				{
+					client_print( id, print_center,"Ked si Hannibal nemozes kupit Terminatora!" );
+					zp_set_user_ammo_packs( id, zp_get_user_ammo_packs( id ) + ITEM_COST )
+					return
+				}
+				if( is_user_terminator( id ) )
+				{
+					client_print( id, print_center,"Uz mas zakupeneho terminatora!" );
+					zp_set_user_ammo_packs( id, zp_get_user_ammo_packs( id ) + ITEM_COST );
+					return
+				}
+				
+				give_item( id, "weapon_knife" );
+				
+				limit_term += 1;
+				
+				set_user_godmode( id, 0 );
+				set_user_health( id, get_pcvar_num( cvar_terminator_hp ) );
+				set_user_armor( id, get_pcvar_num( cvar_terminator_ap ) );
+				ScreenFade( id, 3.0, 0, 255, 0, 100 );
+				
+				MaTerminatora[ id ] = true;
+				
+				ChatColor( 0, "!g[ZP]!y Aktualny pocet terminatorov !t%d!y/!t4", limit_term );
+				ChatColor( id, "!g[ZP]!y Zakupil si si !gTerminatora! !y(+555AP,+555HP,+4 Skoky)" );
+				ChatColor( id, "!g[ZP]!y Mozes si zakupit Special Gun, Bazooka, Minigun, M79 Grenader, Energeticky Stit, Nesmrtelnost" );
+					
+				emit_sound( id, CHAN_WEAPON, "bluezone/zombie/starter.wav", 1.0, ATTN_NORM, 0, PITCH_NORM );
+				
+				if( get_pcvar_num( cvar_terminator_norecoil ) )
+				{
+					g_norecoil[ id ] = true;
+				}
+				
+				
+				if( get_pcvar_num( cvar_terminator_glow_on ) )
+				{
+					glow[ id ] = true;
+				}
+				
+				if( get_pcvar_num( cvar_jumps_extras ) )
+				{
+					jumps[ id ] = true;
+				}
+				
+				if( get_pcvar_num( cvar_terminator_aura_on ) )
+				{
+					set_task( 0.1, "terminator_aura", id + TASK_AURA, _, _, "b" );
+				}
+				
+				new name[ 32 ];
+				get_user_name( id, name, 31 );
+				set_hudmessage( 0, 255, 0, -1.0, 0.15, 1, 0.0, 5.0, 1.0, 1.0, -1 );
+				ShowSyncHudMsg( 0, g_msgSync,"%s je Terminator!",name );
+			}
+			else
+			{
+				ChatColor( id,"!g[Limit]!y Prepac ale na servery mozu byt naraz len 4 terminatory!" );
+				zp_set_user_ammo_packs( id, zp_get_user_ammo_packs( id ) + ITEM_COST );
+			}
+		}
+		else
+		{
+			client_print( id, print_chat, "[ZP] %L", id, "DISABLED" );
+		}
+	}
+}
+
+public plugin_precache( )
+{	
+	precache_sound( "bluezone/zombie/starter.wav" );
+	precache_sound( "bluezone/zombie/ender.wav" );
+}
+
+public zp_user_infected_post( id )
+{
+	if( MaTerminatora[ id ] )
+	{
+		remove_task( id + TASK_AURA );
+		
+		g_un_clip[ id ] = false;
+		g_norecoil[ id ] = false;
+		invis[ id ] = false;
+		glow[ id ] = false;
+		moze_task[ id ] = 0;
+		
+		saltos_extras[ id ] = 0;
+		tres_saltos[ id ] = false;
+		jumps[ id ] = false;
+		
+		MaTerminatora[ id ] = false;
+		limit_term -= 1;
+	}
+}
+
+public client_disconnect( id )
+{
+	if( MaTerminatora[ id ] )
+	{
+		remove_task( id + TASK_AURA );
+		
+		g_un_clip[ id ] = false;
+		g_norecoil[ id ] = false;
+		invis[ id ] = false;
+		glow[ id ] = false;
+		moze_task[ id ] = 0;
+		
+		saltos_extras[ id ] = 0;
+		tres_saltos[ id ] = false;
+		jumps[ id ] = false;
+		limit_term -= 1;
+		MaTerminatora[ id ] = false;
+	}
+}
+
+public client_connect( id )
+{
+	remove_task( id + TASK_AURA );
+	
+	g_un_clip[ id ] = false;
+	g_norecoil[ id ] = false;
+	invis[ id ] = false;
+	glow[ id ] = false;
+	moze_task[ id ] = 0;
+	
+	saltos_extras[ id ] = 0;
+	tres_saltos[ id ] = false;
+	jumps[ id ] = false;
+	
+	MaTerminatora[ id ] = false;
+}
+
+public event_round_start( id )
+{
+	for ( new player; player <= 32; player++ )
+	{
+		if( MaTerminatora[ player ] )
+		{
+			
+			fm_set_user_health( player, 150 );
+			fm_set_user_armor( player, 40 );
+			
+			remove_task( player + TASK_AURA );
+			
+			g_un_clip[ player ] = false;
+			g_norecoil[ player ] = false;
+			invis[ player ] = false;
+			glow[ player ] = false;
+			
+			moze_task[ id ] = 0;
+			
+			saltos_extras[ player ] = 0;
+			tres_saltos[ player ] = false;
+			jumps[ player ] = false;
+			
+			MaTerminatora[ player ] = false;
+			
+			limit_term -= 1;
+			
+			client_print( player, print_center, "Terminator ti vyprsal na nove kolo!!" );
+			
+			emit_sound( player, CHAN_WEAPON, "bluezone/zombie/ender.wav", 1.0, ATTN_NORM, 0, PITCH_NORM );
+			
+		}
+	}
+	for( new i = 1; i < 33 ; i++ )
+		remove_task( i + TASK_AURA );
+}
+
+public Event_CurWeapon( id )
+{
+	if( g_un_clip[ id ] )
+	{
+		g_un_clip[ id ] = true;
+		new terminatorWeapon = read_data( 2 );
+		
+		if( !( WPN_BS & ( 1<<terminatorWeapon ) ) )
+			fm_cs_set_weapon_ammo( get_pdata_cbase( id, g_terminator_weapon ), g_MaxClips[ terminatorWeapon ] );
+	}
+}
+
+public fw_primary_attack( ent )
+{
+	new id = pev( ent,pev_owner );
+	if( g_norecoil[ id ] )
+	{
+		g_norecoil[ id ] = true;
+		pev( id, pev_punchangle, Float:{ 0.0, 0.0, 0.0 } );
+		return HAM_IGNORED;
+	}
+	return HAM_IGNORED;
+}
+
+public fw_primary_attack_post( ent )
+{
+	new id = pev( ent,pev_owner )
+	if( g_norecoil[ id ] )
+	{
+		g_norecoil[ id ] = true;
+		set_pev( id, pev_punchangle, Float:{ 0.0, 0.0, 0.0 } );
+		return HAM_IGNORED;
+	}
+	return HAM_IGNORED;
+}
+
+public fm_PlayerPreThink( id )
+{
+	if( !is_user_alive( id ) || zp_get_user_zombie( id ) )
+		return PLUGIN_CONTINUE;
+	
+	if( glow[ id ] )
+	{
+		glow[ id ] = true;
+			
+		new szColors[ 16 ];
+		get_pcvar_string( cvar_terminator_glow_colors, szColors, 15 );
+			
+		if( get_pcvar_num( cvar_terminator_glow_on ) )
+		{
+			set_user_rendering( id, kRenderFxGlowShell, 8, 89, 5, kRenderNormal, 20 );
+		}
+	}
+	
+	if( get_pcvar_num( cvar_jumps_extras ) )
+	{
+		if( jumps[ id ] )
+		{
+			jumps[ id ] = true;
+			
+			new usebut = get_user_button( id );
+			new oldbut = get_user_oldbutton( id );
+			if( ( usebut & IN_JUMP ) && !( get_entity_flags( id ) & FL_ONGROUND ) && !( oldbut & IN_JUMP ) )
+			{
+				if( saltos_extras[ id ] < get_pcvar_num( cvar_jumps_extras ) )
+				{
+					tres_saltos[ id ] = true;
+					saltos_extras[ id ]++
+					ChatColor( id, "!g[ZP]!y Pouzil si !t%d!y / !t3 !yskokov!", saltos_extras[ id ] );
+					return PLUGIN_CONTINUE;
+				}
+				else
+				{
+					ChatColor( id, "!g[ZP]!y Pockaj si par sekund pokial mozes znova pouzit 3 skoky!" );
+				}
+			}
+			if( ( usebut & IN_JUMP ) && ( get_entity_flags( id ) & FL_ONGROUND ) )
+			{
+				if( saltos_extras[ id ] == 3 )
+				{
+					moze_task[ id ] = 1;
+					
+					if( moze_task[ id ] == 1 )
+					{
+						moze_task[ id ] = 2;
+						set_task( 6.0, "skoky", id );
+						//saltos_extras[ id ] = 0;
+					}
+				}
+				return PLUGIN_CONTINUE;
+			}
+		}
+	}
+	return PLUGIN_CONTINUE;
+}
+
+public skoky( id )
+{
+	if( moze_task[ id ] == 2 )
+	{
+		if( is_user_alive( id ) && MaTerminatora[ id ] && !zp_get_user_zombie( id ) )
+		{
+			ChatColor( id, "!g[ZP]!y Tvoje skoky boli obnovene! Skoky !t4 !y/ !t4!y !" );
+			saltos_extras[ id ] = 0;
+			moze_task[ id ] = 0;
+		}
+	}
+}
+
+public client_PostThink( id )
+{	
+	if( !is_user_alive( id ) || zp_get_user_zombie( id ) )
+		return PLUGIN_CONTINUE;
+	
+	if( jumps[ id ] )
+	{
+		jumps[ id ] = true;
+		
+		if( tres_saltos[ id ] == true )
+		{
+			new Float:vezlocity[ 3 ]	;
+			entity_get_vector( id, EV_VEC_velocity, vezlocity );
+			
+			vezlocity[ 2 ] = random_float( 265.0, 285.0 );
+			
+			entity_set_vector( id, EV_VEC_velocity, vezlocity );
+			tres_saltos[ id ] = false;
+			return PLUGIN_CONTINUE;
+		}	
+	}
+	return PLUGIN_CONTINUE;
+}
+
+public terminator_aura( id )
+{
+	id -= TASK_AURA
+
+	if( !is_user_alive( id ) )
+		return;
+	
+	new szColors[ 16 ];
+	get_pcvar_string( cvar_terminator_aura_colors, szColors, 15 );
+	
+	new gRed[ 4 ], gGreen[ 4 ], gBlue[ 4 ], iRed, iGreen, iBlue;
+	parse( szColors, gRed, 3, gGreen, 3, gBlue, 3 );
+	
+	iRed = clamp( str_to_num( gRed ), 0, 255 );
+	iGreen = clamp( str_to_num( gGreen ), 0, 255 );
+	iBlue = clamp( str_to_num( gBlue ), 0, 255 );
+
+	static Float:FOrigin[ 3 ];
+	pev( id, pev_origin, FOrigin );
+
+	engfunc( EngFunc_MessageBegin, MSG_PVS, SVC_TEMPENTITY, FOrigin, 0 );
+	write_byte( TE_DLIGHT );
+	engfunc( EngFunc_WriteCoord, FOrigin[ 0 ] );
+	engfunc( EngFunc_WriteCoord, FOrigin[ 1 ] );
+	engfunc( EngFunc_WriteCoord, FOrigin[ 2 ] );
+	write_byte( get_pcvar_num( cvar_terminator_aura_size ) );
+	write_byte( iRed );
+	write_byte( iGreen );
+	write_byte( iBlue );
+	write_byte( 2 );
+	write_byte( 0 )
+	message_end( );
+}
+
+stock ScreenFade( plr, Float:fDuration, red, green, blue, alpha )
+{
+	new i = plr ? plr : get_maxplayers( );
+	if( !i )
+	{
+		return 0;
+	}
+    
+	message_begin( plr ? MSG_ONE : MSG_ALL, get_user_msgid( "ScreenFade"), {0, 0, 0}, plr );// Zafarbenie Obrazovky
+	write_short( floatround( 4096.0 * fDuration, floatround_round ) );
+	write_short( floatround( 4096.0 * fDuration, floatround_round ) );
+	write_short( 4096 );
+	write_byte( red );
+	write_byte( green );
+	write_byte( blue );
+	write_byte( alpha );
+	message_end( );
+    
+	return 1;
+}
+ 
+stock ChatColor( const id, const input[], any:... )
+{
+	new count = 1, players[ 32 ]
+	static msg[ 191 ]
+	vformat( msg, 190, input, 3 )
+	
+	replace_all( msg, 190, "!g", "^4" )
+	replace_all( msg, 190, "!y", "^1" )
+	replace_all( msg, 190, "!t", "^3" )
+	
+	
+	if(id) players[ 0 ] = id; else get_players( players, count, "ch" )
+	{
+		for(new i = 0; i < count; i++)
+		{
+			if( is_user_connected( players[ i ] ) )
+			{
+				message_begin( MSG_ONE_UNRELIABLE, get_user_msgid("SayText"), _, players[ i ] )  
+				write_byte( players[ i ] )
+				write_string( msg )
+				message_end( )
+			}
+		}
+	}
+}
