@@ -1,0 +1,106 @@
+#include < amxmodx >
+#include < amxmisc >
+#include < engine >
+#include < fun >
+#include < fakemeta >
+#include < hamsandwich >
+#include < xs >
+#include < zombieplague >
+#include < cstrike >
+
+#define EXTRA_ITEM		"[\yExtraVIP\w] Power of Nature"
+#define ITEM_COST		200
+#define PLUGIN 			"[Avatar] Power Of Nature"
+#define VERSION 		"0.3"
+#define AUTHOR 			"adamCSzombie"
+
+new bool:g_nemesis[ 33 ] ;
+new item, count, g_msgSync;
+
+new const actived_nemesis[ ] = 		"gamesites/avatar/starter.wav";
+
+public plugin_init()
+{
+	register_plugin( PLUGIN, VERSION, AUTHOR );
+	
+	item = zp_register_extra_item( EXTRA_ITEM, ITEM_COST, ZP_TEAM_ZOMBIE );
+	
+	g_msgSync = CreateHudSync( );
+}
+
+public zp_extra_item_selected( id, itemid )
+{
+	if( itemid == item )
+	{
+		if( zp_has_round_started( ) )
+		{
+			if( g_nemesis[ id ] )
+			{	
+				client_cmd( id, "spk valve/sound/buttons/button11" );
+				client_print( id, print_chat, "Uz mas kupene Power Of Nature!" );
+				zp_set_user_ammo_packs( id, zp_get_user_ammo_packs( id ) + ITEM_COST );
+				return;
+			}
+			else
+			{
+				
+				ChatColor( id, "!g[Avatar]!y Zakupil si si Power Of Nature!" );
+				g_nemesis[ id ] = true
+				
+				make_nemesis( id );
+				
+				ScreenFade( id, 1.5, 255, 0, 127, 100 );
+				
+				set_user_rendering( id, kRenderFxGlowShell, 255, 0, 127, kRenderNormal, 40 );
+				
+				emit_sound( player, CHAN_WEAPON, actived_nemesis, 1.0, ATTN_NORM, 0, PITCH_NORM );
+				
+				new name[ 32 ];
+				get_user_name( player, name, 31 );
+				set_hudmessage( 255, 0, 127, -1.0, 0.22, 1, 0.0, 5.0, 1.0, 1.0, -1 );
+				ShowSyncHudMsg( 0, g_msgSync,"%s je Power of Nature!",name );
+			}
+		}
+		else
+		{
+			client_cmd( id, "spk valve/sound/buttons/button11" );
+			client_print( id, print_chat, "Pockaj kym zacne kolo!" );
+			zp_set_user_ammo_packs( id, zp_get_user_ammo_packs( id ) + ITEM_COST );
+			return;
+		}
+	}
+}
+
+public make_nemesis(id)
+{
+	zp_make_user_nemesis(id)
+	g_nemesis[id] = false
+}
+
+stock ChatColor(const id, const input[], any:...)
+{
+	new count = 1, players[32]
+	static msg[191]
+	vformat(msg, 190, input, 3)
+	
+	replace_all(msg, 190, "!g", "^4")
+	replace_all(msg, 190, "!y", "^1")
+	replace_all(msg, 190, "!t", "^3")
+	
+	if (id) players[0] = id; else get_players(players, count, "ch")
+	{
+		for (new i = 0; i < count; i++)
+		{
+			if (is_user_connected(players[i]))
+			{
+				message_begin(MSG_ONE_UNRELIABLE, get_user_msgid("SayText"), {0,0,0}, players[i])
+				write_byte(players[i]);
+				write_string(msg);
+				message_end();
+			}
+		}
+	}
+}
+/* AMXX-Studio Notes - DO NOT MODIFY BELOW HERE
+*{\\ rtf1\\ ansi\\ deff0{\\ fonttbl{\\ f0\\ fnil Tahoma;}}\n\\ viewkind4\\ uc1\\ pard\\ lang1051\\ f0\\ fs16 \n\\ par }
+*/

@@ -1,0 +1,66 @@
+#include < amxmodx >
+#include < zombieplague >
+
+#define PLUGIN "[ZP] Addon: Round Ended Effect"
+#define VERSION "2.0"
+#define AUTHOR "CrazY*"
+
+new cvar_winzm_color[3] , cvar_winhuman_color[3] , cvar_rounddraw_color[3]
+
+public plugin_init() 
+{
+	register_plugin(PLUGIN, VERSION, AUTHOR);
+
+	// Cvars
+	cvar_rounddraw_color[0] = register_cvar("zp_round_draw_color_R", "255");
+	cvar_rounddraw_color[1] = register_cvar("zp_round_draw_color_G", "255");
+	cvar_rounddraw_color[2] = register_cvar("zp_round_draw_color_B", "255");
+	
+	cvar_winzm_color[0] = register_cvar("zp_win_zm_color_R", "255");
+	cvar_winzm_color[1] = register_cvar("zp_win_zm_color_G", "0");
+	cvar_winzm_color[2] = register_cvar("zp_win_zm_color_B", "0");
+
+	cvar_winhuman_color[0] = register_cvar("zp_win_human_color_R", "0");
+	cvar_winhuman_color[1] = register_cvar("zp_win_human_color_G", "0");
+	cvar_winhuman_color[2] = register_cvar("zp_win_human_color_B", "255");
+}
+
+public zp_round_ended(zp_team) 
+{
+	if(zp_team == WIN_NO_ONE)
+	{	
+		message_begin(MSG_BROADCAST, get_user_msgid("ScreenFade"))
+		write_short((1<<12)*4)
+		write_short((1<<12)*1)	
+		write_short(0x0001)	
+		write_byte (get_pcvar_num(cvar_rounddraw_color[0])) // red
+		write_byte (get_pcvar_num(cvar_rounddraw_color[1])) // green
+		write_byte (get_pcvar_num(cvar_rounddraw_color[2])) // blue
+		write_byte (255)
+		message_end()
+	}
+	else if(zp_team == WIN_ZOMBIES)
+	{
+		message_begin(MSG_BROADCAST, get_user_msgid("ScreenFade"))
+		write_short((1<<12)*4)
+		write_short((1<<12)*1)	
+		write_short(0x0001)	
+		write_byte (get_pcvar_num(cvar_winzm_color[0])) // red
+		write_byte (get_pcvar_num(cvar_winzm_color[1])) // green
+		write_byte (get_pcvar_num(cvar_winzm_color[2])) // blue
+		write_byte (255)
+		message_end()
+	}
+	else if(zp_team == WIN_HUMANS)
+	{
+		message_begin(MSG_BROADCAST, get_user_msgid("ScreenFade"))
+		write_short((1<<12)*4)
+		write_short((1<<12)*1)	
+		write_short(0x0001)	
+		write_byte (get_pcvar_num(cvar_winhuman_color[0])) // red
+		write_byte (get_pcvar_num(cvar_winhuman_color[1])) // green
+		write_byte (get_pcvar_num(cvar_winhuman_color[2])) // blue
+		write_byte (255)
+		message_end()
+	}
+}

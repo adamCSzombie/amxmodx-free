@@ -1,0 +1,115 @@
+#include < amxmodx >
+#include < amxmisc >
+#include < cstrike >
+#include < fun >
+#include < fakemeta >
+#include < hamsandwich >
+#include < xs >
+#include < weapons > 
+#include < dhudmessage >
+
+new g_killed_players[ 33 ], g_killed_avatars[ 33 ], g_killed_humans[ 33 ],
+g_rounds_played[ 33 ], g_connected_times[ 33 ];
+
+public plugin_init( )
+{
+	RegisterHam( Ham_Killed,"player","Hrac_Zomrel",1 );
+	
+	register_clcmd( "say /stats","herne_menu" );
+	
+	register_logevent( "zaciatok_kola", 2, "1=Round_Start" );
+}
+public herne_menu( id )
+{
+	new hm = menu_create( "Moje Statistiky \w( \r/stats \w)","ct_menu_handle" );
+	menu_additem( hm, "Pocet odohranych kol \y->\w[ \r%d \w]", g_rounds_played[ id ] );
+	menu_additem( hm, "Pocet pripojeni na server \y->\w[ \r%d \w]", g_connected_times[ id ] );
+	menu_additem( hm, "Pocet zabitych avatarov \y->\w[ \r%d \w]", g_killed_avatars[ id ] );
+	menu_display( id,hm );
+}
+
+public ct_menu_handle( id,menu,item )
+{
+	if( item == MENU_EXIT )
+	{
+		menu_destroy( menu );
+		return PLUGIN_HANDLED;
+	}
+	switch( item )
+	{
+		case 0:
+		{
+			herne_menu( id );
+		}
+		case 1:
+		{
+			herne_menu( id );
+		}
+		case 2:
+		{
+			herne_menu( id );
+		}
+	}
+	return PLUGIN_HANDLED;
+}		
+
+public zaciatok_kola( )    
+{
+		
+	for( new id=0;id<=32;id++ )
+	{
+		if( !is_user_alive( id ) )
+			continue;
+	
+		g_rounds_played[ id ] += 1;
+	}
+}
+
+public Hrac_Zomrel( victim,attacker,shouldgibc )
+{
+	if( is_user_alive( attacker ) )
+	{
+		if( get_user_team( victim ) == 1 )
+		{
+			g_killed_avatars[ attacker ] += 1;
+		}
+	}
+}
+				
+public client_disconnect( id ) { SaveData( id ); }
+public client_putinserver( id ) { g_connected_times[ id ] += 1; LoadData( id ); }
+
+SaveData( id ) 
+{
+	new szAuthid[ 32 ];
+	get_user_authid( id, szAuthid, charsmax(szAuthid) );
+	
+	new szVaultKey[ 128 ], szVaultData[ 512 ];
+	
+	formatex( szVaultKey, 127, "stats-%s-points", szAuthid )
+	formatex( szVaultData, 511, "%i %i %i %i %i", g_killed_players[ id ], g_killed_avatars[ id ], g_killed_humans[ id ], g_rounds_played[ id ], g_connected_times[ id ] );
+	nvault_set( g_nVault, szVaultKey, szVaultData );
+}
+
+LoadData( id ) 
+{
+	new szAuthid[ 32 ];
+	get_user_authid( id, szAuthid, charsmax(szAuthid) );
+	
+	new szVaultKey[ 128 ], szVaultData[ 512 ];
+	
+	formatex( szVaultKey, 127, "stats-%s-points", szAuthid );
+	formatex( szVaultData, 511, "%i %i %i %i %i", g_killed_players[ id ], g_killed_avatars[ id ], g_killed_humans[ id ], g_rounds_played[ id ], g_connected_times[ id ] );
+	
+	nvault_get( g_nVault, szVaultKey, szVaultData, 511 );
+	
+	new money[ 32 ], nd[ 32 ], co[ 32 ], rg[ 32 ], mj[ 32 ];
+	
+	parse( szVaultData, money, 31, nd, 31, co, 31, rg, 31, mj, 31 );
+	
+	g_killed_players[ id ] = str_to_num( money );
+	g_killed_avatars[ id ] = str_to_num( nd );
+	g_killed_humans[ id ] = str_to_num( co );
+	g_rounds_played[ id ] = str_to_num( rg );
+	g_connected_times[ id ] = str_to_num( mj );
+}

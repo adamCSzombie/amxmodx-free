@@ -1,0 +1,142 @@
+#include < amxmodx >
+#include < cstrike >
+#include < fakemeta >
+#include < fun >
+#include < engine >
+#include < hamsandwich >
+#include < zombieplague >
+
+#define PLUGIN			"[Avatar] Knockback Dual Elites"
+#define VERSION			"0.3"
+#define AUTHOR			"adamCSzombie"
+
+new g_item;
+new g_knife[ 33 ]
+
+public plugin_init( ) 
+{
+	register_plugin( PLUGIN, VERSION, AUTHOR );
+	
+	g_item = zp_register_extra_item("Knockback Elites", 50, ZP_TEAM_HUMAN );
+	
+	register_event( "Damage" , "event_Damage" , "b" , "2>0" );
+}
+	
+stock ham_strip_weapon( id,weapon[ ] )
+{
+	    if( !equal( weapon,"weapon_",7 ) ) return 0;
+	
+	    new wId = get_weaponid( weapon );
+	    if( !wId ) return 0;
+	
+	    new wEnt;
+	    while( ( wEnt = engfunc( EngFunc_FindEntityByString, wEnt, "classname", weapon ) ) && pev( wEnt,pev_owner ) != id ) {}
+	    if( !wEnt ) return 0;
+	
+	    if( get_user_weapon( id ) == wId ) ExecuteHamB( Ham_Weapon_RetireWeapon, wEnt );
+	
+	    if( !ExecuteHamB( Ham_RemovePlayerItem, id, wEnt ) ) return 0;
+	    ExecuteHamB( Ham_Item_Kill, wEnt );
+	
+	    set_pev( id, pev_weapons,pev( id,pev_weapons ) & ~( 1<<wId ) );
+	
+	    return 1;
+}
+
+public zp_extra_item_selected( player, itemid )
+{
+	if( itemid == g_item ) 
+	{
+		if( g_knife[ player ] )
+		{
+				client_cmd( player, "spk valve/sound/buttons/button11" );
+				client_print( player, print_chat, "Uz mas zakupeny tento item!" );
+				zp_set_user_ammo_packs( player, zp_get_user_ammo_packs( player ) + 50 );
+				return;
+		}
+		client_print( player, print_chat, "Kupil si si Knockback Elites!" ) 
+		
+		g_knife[ player ] = true;
+		
+		give_item( player, "weapon_elite" );
+		cs_set_user_bpammo( player, CSW_ELITE, 350 );
+	}
+}
+
+public zp_user_infected_post( infected, infector )
+{
+	if ( g_knife[ infected ] )
+	{
+		g_knife[ infected ] = false;
+	}
+}
+
+public event_Damage( id )
+{
+	if( !is_user_alive( id ) )
+		return PLUGIN_CONTINUE;
+	
+	new weapon , attacker = get_user_attacker( id , weapon );
+
+	if( !is_user_alive( attacker ) )
+		return PLUGIN_CONTINUE;
+		
+	if( !g_knife[ attacker ] )
+		return PLUGIN_CONTINUE;
+
+	if( random_num( 1 , 100 ) < 30 )
+	{
+		if( weapon == CSW_ELITE )
+		{
+			new Float:vec[ 3 ];
+			new Float:oldvelo[ 3 ];
+			get_user_velocity( id, oldvelo );
+			create_velocity_vector( id , attacker , vec );
+			vec[ 0 ] += oldvelo[ 0 ];
+			vec[ 1 ] += oldvelo[ 1 ];
+			set_user_velocity( id , vec );
+		}
+	}
+	
+	return PLUGIN_CONTINUE;
+}
+
+stock create_velocity_vector( victim, attacker, Float:velocity[ 3 ] )
+{
+	if( !zp_get_user_zombie( victim ) || !is_user_alive( attacker ) )
+		return 0;
+
+	new Float:vicorigin[ 3 ];
+	new Float:attorigin[ 3 ];
+	entity_get_vector( victim   , EV_VEC_origin , vicorigin );
+	entity_get_vector( attacker , EV_VEC_origin , attorigin );
+
+	new Float:origin2[ 3 ]
+	origin2[ 0 ] = vicorigin[ 0 ] - attorigin[ 0 ];
+	origin2[ 1 ] = vicorigin[ 1 ] - attorigin[ 1 ];
+
+	new Float:largestnum = 0.0;
+
+	if( floatabs( origin2[ 0 ] ) > largestnum ) largestnum = floatabs( origin2[ 0 ] );
+	if( floatabs( origin2[ 1 ] ) > largestnum ) largestnum = floatabs( origin2[ 1 ] );
+
+	origin2[ 0 ] /= largestnum;
+	origin2[ 1 ] /= largestnum;
+
+	velocity[ 0 ] = ( origin2[ 0 ] * ( 3 * 3000 ) ) / get_entity_distance( victim , attacker );
+	velocity[ 1 ] = ( origin2[ 1 ] * ( 3 * 3000 ) ) / get_entity_distance( victim , attacker );
+	if( velocity[ 0 ] <= 20.0 || velocity[ 1 ] <= 20.0 )
+		velocity[ 2 ] = random_float(200.0 , 275.0);
+
+	return 1;
+}	
+
+public client_putinserver( id )
+{
+	g_knife[ id ] = false;
+}
+
+public client_disconnect(id)
+{
+	g_knife[ id ] = false;
+}
